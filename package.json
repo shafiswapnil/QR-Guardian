@@ -1,0 +1,26 @@
+{
+  "name": "qr-guardian",
+  "version": "1.0.0",
+  "main": "src/main.jsx",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shafiswapnil/QR-Guardian.git"
+  },
+  "keywords": [
+    "qr",
+    "scanner",
+    "generator",
+    "react",
+    "vite"
+  ],
+  "author": "Shafi Swapnil",
+  "license": "AGPL-3.0",
+  "bugs": {
+    "url": "https://github.com/shafiswapnil/QR-Guardian/issues"
+  },
+  "homepage": "https://github.com/shafiswapnil/QR-Guardian#readme",
+  "description": ""
+}
