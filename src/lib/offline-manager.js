@@ -3,6 +3,8 @@
  * Handles offline functionality, network status monitoring, and data synchronization
  */
 
+import backgroundSyncManager from "./background-sync-manager.js";
+
 class OfflineManager {
   constructor() {
     this.isOnline = navigator.onLine;
@@ -18,6 +20,35 @@ class OfflineManager {
 
     // Initialize IndexedDB
     this._initializeDB();
+
+    // Set up background sync event listeners
+    this._setupBackgroundSyncListeners();
+  }
+
+  /**
+   * Set up background sync event listeners
+   */
+  _setupBackgroundSyncListeners() {
+    // Listen for background sync events
+    backgroundSyncManager.on("sync-complete", (data) => {
+      console.log("Background sync completed:", data);
+      this.emit("sync-completed", data);
+    });
+
+    backgroundSyncManager.on("sync-failed", (data) => {
+      console.error("Background sync failed:", data);
+      this.emit("sync-failed", data);
+    });
+
+    backgroundSyncManager.on("request-synced", (data) => {
+      console.log("Request synced via background sync:", data);
+      this.emit("request-synced", data);
+    });
+
+    backgroundSyncManager.on("error", (data) => {
+      console.error("Background sync error:", data);
+      this.emit("error", { type: "background-sync-error", ...data });
+    });
   }
 
   /**
@@ -262,30 +293,19 @@ class OfflineManager {
    * Queue request for later processing when online
    */
   async queueRequest(requestData) {
-    if (!this.db) {
-      console.warn("Database not initialized");
-      this.requestQueue.push(requestData);
-      return false;
-    }
-
     try {
-      const transaction = this.db.transaction(["requestQueue"], "readwrite");
-      const store = transaction.objectStore("requestQueue");
+      // Use background sync manager for queuing
+      const requestId = await backgroundSyncManager.queueRequest(requestData);
+      console.log("Request queued for background sync:", requestId);
 
-      const queueItem = {
-        ...requestData,
-        timestamp: Date.now(),
-        retryCount: 0,
-      };
-
-      await this._promisifyRequest(store.add(queueItem));
-      console.log("Request queued for sync:", queueItem);
-
-      this.emit("request-queued", queueItem);
-      return true;
+      this.emit("request-queued", { requestId, requestData });
+      return requestId;
     } catch (error) {
-      console.error("Failed to queue request:", error);
+      console.error("Failed to queue request for background sync:", error);
+
+      // Fallback to in-memory queue
       this.requestQueue.push(requestData);
+      this.emit("request-queued", { requestData, fallback: true });
       return false;
     }
   }
@@ -302,24 +322,14 @@ class OfflineManager {
     console.log("Processing request queue...");
 
     try {
-      // Get queued requests from IndexedDB
-      const queuedRequests = await this._getQueuedRequests();
+      // Trigger background sync for modern browsers
+      await backgroundSyncManager.triggerSync();
 
-      // Process in-memory queue first
+      // Process in-memory queue as fallback
       for (const request of this.requestQueue) {
         await this._processQueuedRequest(request);
       }
       this.requestQueue = [];
-
-      // Process IndexedDB queue
-      for (const request of queuedRequests) {
-        const success = await this._processQueuedRequest(request);
-        if (success) {
-          await this._removeFromQueue(request.id);
-        } else {
-          await this._incrementRetryCount(request.id);
-        }
-      }
 
       console.log("Request queue processing completed");
       this.emit("sync-completed");
@@ -469,14 +479,75 @@ class OfflineManager {
         this._promisifyRequest(transaction.objectStore("requestQueue").count()),
       ]);
 
+      // Get background sync queue stats
+      const backgroundSyncStats = await backgroundSyncManager.getQueueStats();
+
       return {
         scanHistory: scanCount,
         userPreferences: prefCount,
         requestQueue: queueCount,
+        backgroundSync: backgroundSyncStats,
       };
     } catch (error) {
       console.error("Failed to get storage stats:", error);
-      return { scanHistory: 0, userPreferences: 0, requestQueue: 0 };
+      return {
+        scanHistory: 0,
+        userPreferences: 0,
+        requestQueue: 0,
+        backgroundSync: {},
+      };
+    }
+  }
+
+  /**
+   * Get background sync status
+   */
+  getBackgroundSyncStatus() {
+    return backgroundSyncManager.getSyncStatus();
+  }
+
+  /**
+   * Trigger background sync manually
+   */
+  async triggerBackgroundSync() {
+    try {
+      const result = await backgroundSyncManager.triggerSync();
+      this.emit("sync-triggered", { success: result });
+      return result;
+    } catch (error) {
+      console.error("Failed to trigger background sync:", error);
+      this.emit("error", { type: "sync-trigger-failed", error });
+      return false;
+    }
+  }
+
+  /**
+   * Clear failed background sync requests
+   */
+  async clearFailedSyncRequests() {
+    try {
+      const count = await backgroundSyncManager.clearFailedRequests();
+      this.emit("failed-requests-cleared", { count });
+      return count;
+    } catch (error) {
+      console.error("Failed to clear failed sync requests:", error);
+      this.emit("error", { type: "clear-failed-sync-requests-failed", error });
+      return 0;
+    }
+  }
+
+  /**
+   * Retry failed background sync requests
+   */
+  async retryFailedSyncRequests() {
+    try {
+      const count = await backgroundSyncManager.retryFailedRequests();
+      this.emit("failed-requests-retried", { count });
+      return count;
+    } catch (error) {
+      console.error("Failed to retry failed sync requests:", error);
+      this.emit("error", { type: "retry-failed-sync-requests-failed", error });
+      return 0;
     }
   }
 
@@ -535,6 +606,9 @@ class OfflineManager {
       "visibilitychange",
       this._handleVisibilityChange
     );
+
+    // Clean up background sync manager
+    backgroundSyncManager.destroy();
 
     // Close database connection
     if (this.db) {
