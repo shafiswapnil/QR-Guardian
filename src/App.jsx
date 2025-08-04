@@ -9,6 +9,8 @@ import OfflineIndicator from "./components/OfflineIndicator";
 import UpdatePrompt from "./components/UpdatePrompt";
 import UpdateBanner from "./components/UpdateBanner";
 import UpdateStatus from "./components/UpdateStatus";
+import InstallPrompt from "./components/InstallPrompt";
+import InstallAnalytics from "./components/InstallAnalytics";
 import { QrCode, Scan, Shield, Share2, History, Settings } from "lucide-react";
 import { useIsMobile } from "./hooks/use-mobile";
 import offlineManager from "./lib/offline-manager";
@@ -181,6 +183,9 @@ function App() {
       <UpdatePrompt />
       <UpdateBanner />
 
+      {/* PWA install prompt */}
+      <InstallPrompt />
+
       <div className="max-w-full sm:max-w-md md:max-w-2xl lg:max-w-4xl mx-auto">
         <header className="text-center mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2">
@@ -317,6 +322,7 @@ function App() {
           <TabsContent value="settings" className="space-y-6">
             <div className="space-y-6">
               <UpdateStatus />
+              <InstallAnalytics />
 
               <div className="text-center text-gray-500 py-4">
                 <Settings className="w-8 h-8 mx-auto mb-2 opacity-50" />
