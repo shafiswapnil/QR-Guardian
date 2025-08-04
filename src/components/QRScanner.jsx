@@ -40,6 +40,7 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
   const [capabilities, setCapabilities] = useState(null);
 
   const startScanning = async () => {
+    let cameraId;
     try {
       const devices = await Html5Qrcode.getCameras();
       if (devices && devices.length) {
@@ -47,7 +48,8 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
         const rearCamera =
           devices.find((device) => /back|rear/i.test(device.label)) ||
           devices[0];
-        setSelectedCameraId(rearCamera.id);
+        cameraId = rearCamera.id;
+        setSelectedCameraId(cameraId);
         setPermissionError(null);
       } else {
         setPermissionError("No cameras found.");
@@ -80,25 +82,18 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
       aspectRatio: 1.0,
     };
 
-    if (!html5QrCodeRef.current) {
-      html5QrCodeRef.current = new Html5Qrcode("qr-reader", {
-        verbose: false,
-        logger: {
-          log: () => {},
-          warn: () => {},
-          error: () => {},
-        },
-      });
-    }
+    html5QrCodeRef.current = new Html5Qrcode("qr-reader", {
+      verbose: false,
+      logger: {
+        log: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+    });
 
     try {
       await html5QrCodeRef.current.start(
-        selectedCameraId ||
-          (cameras.length &&
-            (
-              cameras.find((device) => /back|rear/i.test(device.label)) ||
-              cameras[0]
-            ).id),
+        selectedCameraId || cameraId,
         config,
         qrCodeSuccessCallback,
         qrCodeErrorCallback
@@ -125,10 +120,6 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
         .then(() => {
           setIsScanning(false);
           setCapabilities(null);
-          const qrReader = document.getElementById("qr-reader");
-          if (qrReader) {
-            qrReader.innerHTML = "";
-          }
         })
         .catch((err) => {
           console.error("Error stopping scanner:", err);
