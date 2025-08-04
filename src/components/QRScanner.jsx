@@ -1,94 +1,179 @@
-import { useEffect, useRef, useState } from "react";
-import { Html5QrcodeScanner, Html5Qrcode } from "html5-qrcode";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Camera, CameraOff, Upload, Image } from "lucide-react";
+import {
+  Camera,
+  CameraOff,
+  Upload,
+  Image,
+  Video,
+  Zap,
+  ZoomIn,
+} from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 const QRScanner = ({ onScanSuccess, onScanError }) => {
-  const scannerRef = useRef(null);
+  const html5QrCodeRef = useRef(null);
   const fileInputRef = useRef(null);
+
   const [isScanning, setIsScanning] = useState(false);
-  const [scanner, setScanner] = useState(null);
-  const [permissionGranted, setPermissionGranted] = useState(false);
   const [permissionError, setPermissionError] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
 
-  const requestCameraPermission = async () => {
+  // Pro-mode state
+  const [cameras, setCameras] = useState([]);
+  const [selectedCameraId, setSelectedCameraId] = useState("");
+  const [torchOn, setTorchOn] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [capabilities, setCapabilities] = useState(null);
+
+  const getCameras = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      stream.getTracks().forEach((track) => track.stop()); // Stop the stream immediately after getting permission
-      setPermissionGranted(true);
-      setPermissionError(null);
-      return true;
+      const devices = await Html5Qrcode.getCameras();
+      if (devices && devices.length) {
+        setCameras(devices);
+        const rearCamera =
+          devices.find((device) => /back|rear/i.test(device.label)) ||
+          devices[0];
+        setSelectedCameraId(rearCamera.id);
+        setPermissionError(null);
+      }
     } catch (err) {
-      console.error("Camera permission denied or error:", err);
-      setPermissionGranted(false);
+      console.error("Error getting cameras:", err);
       setPermissionError(
-        err.name === "NotAllowedError"
-          ? "Camera access denied. Please grant permission in your browser settings."
-          : "Unable to access camera. Please ensure it's available and not in use by another application."
+        "Unable to access camera. Please grant permission and ensure it's available."
       );
-      return false;
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    getCameras();
+  }, [getCameras]);
 
   const startScanning = async () => {
-    const granted = await requestCameraPermission();
-    if (!granted) {
+    if (!selectedCameraId) {
+      setPermissionError("No camera selected.");
       return;
     }
 
-    if (scanner) {
-      scanner.clear();
+    const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+      if (onScanSuccess) {
+        onScanSuccess(decodedText, decodedResult);
+      }
+      stopScanning();
+    };
+
+    const qrCodeErrorCallback = (error) => {
+      if (onScanError) {
+        onScanError(error);
+      }
+    };
+
+    const config = {
+      fps: 10,
+      qrbox: { width: 250, height: 250 },
+      aspectRatio: 1.0,
+    };
+
+    if (!html5QrCodeRef.current) {
+      html5QrCodeRef.current = new Html5Qrcode("qr-reader", {
+        verbose: false,
+        logger: {
+          log: () => {},
+          warn: () => {},
+          error: () => {},
+        },
+      });
     }
 
-    const html5QrcodeScanner = new Html5QrcodeScanner(
-      "qr-reader",
-      {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0,
-        showTorchButtonIfSupported: true,
-        showZoomSliderIfSupported: true,
-        defaultZoomValueIfSupported: 2,
-      },
-      false
-    );
+    try {
+      await html5QrCodeRef.current.start(
+        selectedCameraId,
+        config,
+        qrCodeSuccessCallback,
+        qrCodeErrorCallback
+      );
+      setIsScanning(true);
 
-    html5QrcodeScanner.render(
-      (decodedText, decodedResult) => {
-        console.log(`QR Code detected: ${decodedText}`);
-        if (onScanSuccess) {
-          onScanSuccess(decodedText, decodedResult);
-        }
-        // Stop scanning after successful scan
-        html5QrcodeScanner.clear();
-        setIsScanning(false);
-      },
-      (error) => {
-        // Handle scan error silently (too many errors for failed attempts)
-        if (
-          onScanError &&
-          error !==
-            "QR code parse error, error = NotFoundException: No MultiFormat Readers were able to detect the code."
-        ) {
-          console.warn(`QR Code scan error: ${error}`);
-        }
-      }
-    );
-
-    setScanner(html5QrcodeScanner);
-    setIsScanning(true);
+      // Get capabilities after starting
+      const stream = html5QrCodeRef.current.getRunningTrackCameraCapabilities();
+      setCapabilities(stream);
+      // Reset controls to default
+      setTorchOn(false);
+      setZoom(stream?.zoom?.min || 1);
+    } catch (err) {
+      console.error("Error starting scanner:", err);
+      setPermissionError(`Failed to start scanner: ${err.message}`);
+      setIsScanning(false);
+    }
   };
 
-  const stopScanning = () => {
-    if (scanner) {
-      scanner.clear();
-      setScanner(null);
+  const stopScanning = useCallback(() => {
+    if (html5QrCodeRef.current && isScanning) {
+      html5QrCodeRef.current
+        .stop()
+        .then(() => {
+          setIsScanning(false);
+          setCapabilities(null);
+        })
+        .catch((err) => {
+          console.error("Error stopping scanner:", err);
+        });
     }
-    setIsScanning(false);
+  }, [isScanning]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopScanning();
+    };
+  }, [stopScanning]);
+
+  const handleCameraChange = (value) => {
+    if (isScanning) {
+      stopScanning();
+    }
+    setSelectedCameraId(value);
+  };
+
+  const handleTorchChange = async (checked) => {
+    if (isScanning && capabilities?.torch) {
+      try {
+        await html5QrCodeRef.current.applyVideoConstraints({
+          torch: checked,
+          advanced: [{ torch: checked }],
+        });
+        setTorchOn(checked);
+      } catch (err) {
+        console.error("Error toggling torch:", err);
+      }
+    }
+  };
+
+  const handleZoomChange = async (value) => {
+    if (isScanning && capabilities?.zoom) {
+      try {
+        await html5QrCodeRef.current.applyVideoConstraints({
+          zoom: value[0],
+          advanced: [{ zoom: value[0] }],
+        });
+        setZoom(value[0]);
+      } catch (err) {
+        console.error("Error setting zoom:", err);
+      }
+    }
   };
 
   const handleFileUpload = async (event) => {
@@ -99,8 +184,9 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
     setUploadError(null);
 
     try {
-      const html5QrCode = new Html5Qrcode("file-scan-result");
-      const result = await html5QrCode.scanFile(file, true);
+      // Use a temporary Html5Qrcode instance for file scanning
+      const fileScanner = new Html5Qrcode("file-scan-result", false);
+      const result = await fileScanner.scanFile(file, true);
 
       console.log(`QR Code detected from file: ${result}`);
       if (onScanSuccess) {
@@ -116,7 +202,6 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
       }
     } finally {
       setIsProcessingFile(false);
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -128,14 +213,6 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
       fileInputRef.current.click();
     }
   };
-
-  useEffect(() => {
-    return () => {
-      if (scanner) {
-        scanner.clear();
-      }
-    };
-  }, [scanner]);
 
   return (
     <Card className="w-full max-w-full sm:max-w-md md:max-w-lg mx-auto">
@@ -151,6 +228,7 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
             <TabsTrigger
               value="camera"
               className="flex items-center gap-2 min-h-[40px] text-sm"
+              onClick={stopScanning}
             >
               <Camera className="w-4 h-4" />
               <span className="hidden sm:inline">Camera</span>
@@ -159,6 +237,7 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
             <TabsTrigger
               value="upload"
               className="flex items-center gap-2 min-h-[40px] text-sm"
+              onClick={stopScanning}
             >
               <Upload className="w-4 h-4" />
               <span className="hidden sm:inline">Upload Image</span>
@@ -167,7 +246,10 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
           </TabsList>
 
           <TabsContent value="camera" className="space-y-4">
-            <div id="qr-reader" className="w-full"></div>
+            <div
+              id="qr-reader"
+              className="w-full [&_video]:aspect-square [&_video]:object-cover rounded-lg overflow-hidden"
+            ></div>
 
             {permissionError && (
               <div className="text-red-500 text-sm text-center">
@@ -175,24 +257,92 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
               </div>
             )}
 
-            <div className="flex gap-2">
-              {!isScanning ? (
-                <Button onClick={startScanning} className="flex-1 min-h-[44px]">
-                  <Camera className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Start Scanning</span>
-                  <span className="sm:hidden">Start</span>
-                </Button>
-              ) : (
-                <Button
-                  onClick={stopScanning}
-                  variant="destructive"
-                  className="flex-1 min-h-[44px]"
+            <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+              <div className="flex flex-col sm:flex-row gap-2 items-center">
+                {!isScanning ? (
+                  <Button
+                    onClick={startScanning}
+                    className="flex-1 w-full min-h-[44px]"
+                    disabled={!selectedCameraId}
+                  >
+                    <Video className="w-4 h-4 mr-2" />
+                    Start Scanning
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={stopScanning}
+                    variant="destructive"
+                    className="flex-1 w-full min-h-[44px]"
+                  >
+                    <CameraOff className="w-4 h-4 mr-2" />
+                    Stop Scanning
+                  </Button>
+                )}
+                <Select
+                  onValueChange={handleCameraChange}
+                  defaultValue={selectedCameraId}
+                  disabled={isScanning}
                 >
-                  <CameraOff className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Stop Scanning</span>
-                  <span className="sm:hidden">Stop</span>
-                </Button>
-              )}
+                  <SelectTrigger className="w-full sm:w-auto sm:flex-grow-[2] min-h-[44px]">
+                    <SelectValue placeholder="Select a camera" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cameras.map((camera) => (
+                      <SelectItem key={camera.id} value={camera.id}>
+                        {camera.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-4 grid-cols-2">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="torch-mode"
+                    checked={torchOn}
+                    onCheckedChange={handleTorchChange}
+                    disabled={!isScanning || !capabilities?.torch}
+                  />
+                  <Label
+                    htmlFor="torch-mode"
+                    className="flex items-center gap-2 text-sm"
+                  >
+                    <Zap
+                      className={`w-4 h-4 ${
+                        !isScanning || !capabilities?.torch
+                          ? "text-muted-foreground"
+                          : ""
+                      }`}
+                    />
+                    Torch
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Label
+                    htmlFor="zoom-slider"
+                    className="flex items-center gap-2 text-sm"
+                  >
+                    <ZoomIn
+                      className={`w-4 h-4 ${
+                        !isScanning || !capabilities?.zoom
+                          ? "text-muted-foreground"
+                          : ""
+                      }`}
+                    />
+                  </Label>
+                  <Slider
+                    id="zoom-slider"
+                    value={[zoom]}
+                    onValueChange={handleZoomChange}
+                    min={capabilities?.zoom?.min || 1}
+                    max={capabilities?.zoom?.max || 1}
+                    step={capabilities?.zoom?.step || 0.1}
+                    disabled={!isScanning || !capabilities?.zoom}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
             </div>
           </TabsContent>
 
