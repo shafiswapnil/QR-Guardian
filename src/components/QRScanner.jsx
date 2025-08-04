@@ -39,7 +39,7 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
   const [zoom, setZoom] = useState(1);
   const [capabilities, setCapabilities] = useState(null);
 
-  const getCameras = useCallback(async () => {
+  const startScanning = async () => {
     try {
       const devices = await Html5Qrcode.getCameras();
       if (devices && devices.length) {
@@ -49,22 +49,15 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
           devices[0];
         setSelectedCameraId(rearCamera.id);
         setPermissionError(null);
+      } else {
+        setPermissionError("No cameras found.");
+        return;
       }
     } catch (err) {
       console.error("Error getting cameras:", err);
       setPermissionError(
         "Unable to access camera. Please grant permission and ensure it's available."
       );
-    }
-  }, []);
-
-  useEffect(() => {
-    getCameras();
-  }, [getCameras]);
-
-  const startScanning = async () => {
-    if (!selectedCameraId) {
-      setPermissionError("No camera selected.");
       return;
     }
 
@@ -100,7 +93,12 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
 
     try {
       await html5QrCodeRef.current.start(
-        selectedCameraId,
+        selectedCameraId ||
+          (cameras.length &&
+            (
+              cameras.find((device) => /back|rear/i.test(device.label)) ||
+              cameras[0]
+            ).id),
         config,
         qrCodeSuccessCallback,
         qrCodeErrorCallback
@@ -127,6 +125,10 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
         .then(() => {
           setIsScanning(false);
           setCapabilities(null);
+          const qrReader = document.getElementById("qr-reader");
+          if (qrReader) {
+            qrReader.innerHTML = "";
+          }
         })
         .catch((err) => {
           console.error("Error stopping scanner:", err);
@@ -263,7 +265,6 @@ const QRScanner = ({ onScanSuccess, onScanError }) => {
                   <Button
                     onClick={startScanning}
                     className="flex-1 w-full min-h-[44px]"
-                    disabled={!selectedCameraId}
                   >
                     <Video className="w-4 h-4 mr-2" />
                     Start Scanning
