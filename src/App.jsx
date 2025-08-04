@@ -5,23 +5,50 @@ import QRGenerator from "./components/QRGenerator";
 import SafetyChecker from "./components/SafetyChecker";
 import NearbySharing from "./components/NearbySharing";
 import ScanHistory from "./components/ScanHistory";
+import OfflineIndicator from "./components/OfflineIndicator";
 import { QrCode, Scan, Shield, Share2, History } from "lucide-react";
 import { useIsMobile } from "./hooks/use-mobile";
+import offlineManager from "./lib/offline-manager";
 import "./App.css";
 
 function App() {
   const [scannedUrl, setScannedUrl] = useState("");
   const [activeTab, setActiveTab] = useState("scanner");
   const [contentToShare, setContentToShare] = useState("");
-  const [scanHistory, setScanHistory] = useState(() => {
-    const storedHistory = localStorage.getItem("qrScanHistory");
-    return storedHistory ? JSON.parse(storedHistory) : [];
-  });
+  const [scanHistory, setScanHistory] = useState([]);
+  const [isOffline, setIsOffline] = useState(!offlineManager.getOnlineStatus());
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    localStorage.setItem("qrScanHistory", JSON.stringify(scanHistory));
-  }, [scanHistory]);
+    // Set up offline manager listeners
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    offlineManager.on("online", handleOnline);
+    offlineManager.on("offline", handleOffline);
+
+    // Load initial scan history from IndexedDB
+    const loadInitialHistory = async () => {
+      try {
+        const history = await offlineManager.getScanHistory();
+        setScanHistory(history);
+      } catch (error) {
+        console.error("Failed to load initial scan history:", error);
+        // Fallback to localStorage
+        const storedHistory = localStorage.getItem("qrScanHistory");
+        if (storedHistory) {
+          setScanHistory(JSON.parse(storedHistory));
+        }
+      }
+    };
+
+    loadInitialHistory();
+
+    return () => {
+      offlineManager.off("online", handleOnline);
+      offlineManager.off("offline", handleOffline);
+    };
+  }, []);
 
   const handleScanSuccess = (decodedText) => {
     console.log("QR Code scanned:", decodedText);
@@ -64,7 +91,21 @@ function App() {
       timestamp: new Date().toISOString(),
       isSafe: isSafe,
     };
-    setScanHistory((prevHistory) => [newScan, ...prevHistory]);
+
+    // Store in IndexedDB for offline access
+    offlineManager
+      .storeScanHistory(newScan)
+      .then(() => {
+        // Update local state
+        setScanHistory((prevHistory) => [newScan, ...prevHistory]);
+      })
+      .catch((error) => {
+        console.error("Failed to store scan history offline:", error);
+        // Fallback to localStorage and local state
+        const updatedHistory = [newScan, ...scanHistory];
+        setScanHistory(updatedHistory);
+        localStorage.setItem("qrScanHistory", JSON.stringify(updatedHistory));
+      });
   };
 
   const handleScanError = (error) => {
@@ -78,6 +119,9 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 px-4 py-6 sm:p-6 md:p-8">
+      {/* Offline status indicator */}
+      <OfflineIndicator />
+
       <div className="max-w-full sm:max-w-md md:max-w-2xl lg:max-w-4xl mx-auto">
         <header className="text-center mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2">
