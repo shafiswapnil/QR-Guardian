@@ -23,6 +23,7 @@ build/
 *.sublime-project
 *.sublime-workspace
 .kiro
+.kiro/
 
 # Environment variables
 .env
