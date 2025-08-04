@@ -6,10 +6,14 @@ import SafetyChecker from "./components/SafetyChecker";
 import NearbySharing from "./components/NearbySharing";
 import ScanHistory from "./components/ScanHistory";
 import OfflineIndicator from "./components/OfflineIndicator";
-import { QrCode, Scan, Shield, Share2, History } from "lucide-react";
+import UpdatePrompt from "./components/UpdatePrompt";
+import UpdateBanner from "./components/UpdateBanner";
+import UpdateStatus from "./components/UpdateStatus";
+import { QrCode, Scan, Shield, Share2, History, Settings } from "lucide-react";
 import { useIsMobile } from "./hooks/use-mobile";
 import offlineManager from "./lib/offline-manager";
 import NotificationManager from "./lib/notification-manager";
+import updateManager from "./lib/update-manager";
 import { maliciousQRDetectedTemplate } from "./lib/notification-templates";
 import "./App.css";
 
@@ -49,6 +53,16 @@ function App() {
       }
     };
 
+    // Initialize update manager
+    const initializeUpdateManager = async () => {
+      try {
+        await updateManager.initialize();
+        console.log("UpdateManager initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize UpdateManager:", error);
+      }
+    };
+
     // Load initial scan history from IndexedDB
     const loadInitialHistory = async () => {
       try {
@@ -65,11 +79,13 @@ function App() {
     };
 
     initializeNotifications();
+    initializeUpdateManager();
     loadInitialHistory();
 
     return () => {
       offlineManager.off("online", handleOnline);
       offlineManager.off("offline", handleOffline);
+      updateManager.destroy();
     };
   }, [notificationManager]);
 
@@ -161,6 +177,10 @@ function App() {
       {/* Offline status indicator */}
       <OfflineIndicator />
 
+      {/* Update management components */}
+      <UpdatePrompt />
+      <UpdateBanner />
+
       <div className="max-w-full sm:max-w-md md:max-w-2xl lg:max-w-4xl mx-auto">
         <header className="text-center mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2">
@@ -175,7 +195,7 @@ function App() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList
             className={`grid w-full mb-6 sm:mb-8 ${
-              isMobile ? "grid-cols-2 gap-1 h-auto p-1" : "grid-cols-5"
+              isMobile ? "grid-cols-3 gap-1 h-auto p-1" : "grid-cols-6"
             }`}
           >
             <TabsTrigger
@@ -241,6 +261,17 @@ function App() {
               <History className="w-4 h-4" />
               History
             </TabsTrigger>
+            <TabsTrigger
+              value="settings"
+              className={`flex items-center gap-1 sm:gap-2 ${
+                isMobile
+                  ? "min-h-[44px] text-xs sm:text-sm flex-col sm:flex-row p-2"
+                  : ""
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              Settings
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="scanner" className="space-y-6">
@@ -281,6 +312,17 @@ function App() {
 
           <TabsContent value="history" className="space-y-6">
             <ScanHistory />
+          </TabsContent>
+
+          <TabsContent value="settings" className="space-y-6">
+            <div className="space-y-6">
+              <UpdateStatus />
+
+              <div className="text-center text-gray-500 py-4">
+                <Settings className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">App settings and update management</p>
+              </div>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
