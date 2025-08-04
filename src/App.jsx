@@ -9,6 +9,8 @@ import OfflineIndicator from "./components/OfflineIndicator";
 import { QrCode, Scan, Shield, Share2, History } from "lucide-react";
 import { useIsMobile } from "./hooks/use-mobile";
 import offlineManager from "./lib/offline-manager";
+import NotificationManager from "./lib/notification-manager";
+import { maliciousQRDetectedTemplate } from "./lib/notification-templates";
 import "./App.css";
 
 function App() {
@@ -17,6 +19,7 @@ function App() {
   const [contentToShare, setContentToShare] = useState("");
   const [scanHistory, setScanHistory] = useState([]);
   const [isOffline, setIsOffline] = useState(!offlineManager.getOnlineStatus());
+  const [notificationManager] = useState(() => new NotificationManager());
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -26,6 +29,25 @@ function App() {
 
     offlineManager.on("online", handleOnline);
     offlineManager.on("offline", handleOffline);
+
+    // Initialize notification manager
+    const initializeNotifications = async () => {
+      try {
+        // Request notification permission on app load
+        const hasPermission = await notificationManager.requestPermission();
+        if (hasPermission) {
+          console.log("Notification permission granted");
+        }
+
+        // Set up service worker registration for notifications
+        if ("serviceWorker" in navigator) {
+          const registration = await navigator.serviceWorker.ready;
+          notificationManager.setServiceWorkerRegistration(registration);
+        }
+      } catch (error) {
+        console.error("Failed to initialize notifications:", error);
+      }
+    };
 
     // Load initial scan history from IndexedDB
     const loadInitialHistory = async () => {
@@ -42,13 +64,14 @@ function App() {
       }
     };
 
+    initializeNotifications();
     loadInitialHistory();
 
     return () => {
       offlineManager.off("online", handleOnline);
       offlineManager.off("offline", handleOffline);
     };
-  }, []);
+  }, [notificationManager]);
 
   const handleScanSuccess = (decodedText) => {
     console.log("QR Code scanned:", decodedText);
@@ -85,6 +108,22 @@ function App() {
     };
 
     const isSafe = checkInitialSafety(decodedText);
+
+    // Show security notification for malicious QR codes
+    // Requirement 4.2: When security threats are detected THEN the user SHALL receive appropriate alerts
+    if (!isSafe) {
+      const threat = {
+        type: "malicious-qr",
+        description: "Potentially harmful QR code detected",
+        content: decodedText,
+        reason: "Contains suspicious patterns or invalid URL",
+        severity: "high",
+      };
+
+      notificationManager.showSecurityAlert(threat).catch((error) => {
+        console.error("Failed to show security notification:", error);
+      });
+    }
 
     const newScan = {
       content: decodedText,

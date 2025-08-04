@@ -707,4 +707,140 @@ async function broadcastMessage(message) {
   }
 }
 
+// Push notification event listeners
+// Requirement 4.4: When notifications are sent THEN they SHALL work even when the app is closed
+
+// Handle push events for push notifications
+self.addEventListener("push", (event) => {
+  console.log("Push event received:", event);
+
+  let notificationData = {
+    title: "QR Guardian",
+    body: "You have a new notification",
+    icon: "/android-chrome-192x192.png",
+    badge: "/android-chrome-192x192.png",
+    tag: "default",
+    data: {
+      type: "general",
+      url: "/",
+    },
+  };
+
+  // Parse push data if available
+  if (event.data) {
+    try {
+      const pushData = event.data.json();
+      notificationData = {
+        ...notificationData,
+        ...pushData,
+      };
+    } catch (error) {
+      console.error("Error parsing push data:", error);
+      notificationData.body = event.data.text() || notificationData.body;
+    }
+  }
+
+  // Show the notification
+  event.waitUntil(
+    self.registration.showNotification(notificationData.title, {
+      body: notificationData.body,
+      icon: notificationData.icon,
+      badge: notificationData.badge,
+      tag: notificationData.tag,
+      data: notificationData.data,
+      actions: notificationData.actions || [],
+      requireInteraction: notificationData.requireInteraction || false,
+      vibrate: notificationData.vibrate || [200, 100, 200],
+      silent: notificationData.silent || false,
+    })
+  );
+});
+
+// Handle notification click events
+// Requirement 4.4: When notifications are sent THEN they SHALL work even when the app is closed
+self.addEventListener("notificationclick", (event) => {
+  console.log("Notification clicked:", event);
+
+  const notification = event.notification;
+  const action = event.action;
+  const data = notification.data || {};
+
+  // Close the notification
+  notification.close();
+
+  // Handle different notification types and actions
+  event.waitUntil(
+    (async () => {
+      try {
+        switch (data.type) {
+          case "update":
+            if (action === "update") {
+              // Trigger app update
+              const clients = await self.clients.matchAll();
+              if (clients.length > 0) {
+                clients[0].postMessage({
+                  type: "APPLY_UPDATE",
+                  version: data.version,
+                });
+                return clients[0].focus();
+              }
+              return self.clients.openWindow("/");
+            } else if (action === "dismiss") {
+              // Just close the notification (already done above)
+              return;
+            }
+            break;
+
+          case "security":
+            if (action === "view") {
+              // Open app to security alert page
+              return self.clients.openWindow(data.url || "/?alert=security");
+            } else if (action === "dismiss") {
+              // Just close the notification
+              return;
+            }
+            break;
+
+          default:
+            // Open the app for general notifications
+            const clients = await self.clients.matchAll();
+            if (clients.length > 0) {
+              return clients[0].focus();
+            }
+            return self.clients.openWindow(data.url || "/");
+        }
+
+        // Default behavior: focus existing window or open new one
+        const clients = await self.clients.matchAll();
+        if (clients.length > 0) {
+          return clients[0].focus();
+        }
+        return self.clients.openWindow(data.url || "/");
+      } catch (error) {
+        console.error("Error handling notification click:", error);
+        // Fallback: just open the app
+        return self.clients.openWindow("/");
+      }
+    })()
+  );
+});
+
+// Handle notification close events
+self.addEventListener("notificationclose", (event) => {
+  console.log("Notification closed:", event);
+
+  const notification = event.notification;
+  const data = notification.data || {};
+
+  // Track notification dismissal for analytics if needed
+  broadcastMessage({
+    type: "NOTIFICATION_DISMISSED",
+    payload: {
+      tag: notification.tag,
+      type: data.type,
+      timestamp: Date.now(),
+    },
+  });
+});
+
 console.log("Service Worker loaded successfully");
