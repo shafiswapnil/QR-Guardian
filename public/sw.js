@@ -8,6 +8,163 @@ import {
 import { ExpirationPlugin } from "workbox-expiration";
 import { CacheableResponsePlugin } from "workbox-cacheable-response";
 
+// CSP Configuration for Service Worker
+const CSP_DIRECTIVES = {
+  "default-src": ["'self'"],
+  "script-src": [
+    "'self'",
+    "'unsafe-inline'",
+    "'unsafe-eval'",
+    "https://cdn.jsdelivr.net",
+    "https://unpkg.com",
+  ],
+  "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+  "font-src": ["'self'", "https://fonts.gstatic.com"],
+  "img-src": ["'self'", "data:", "blob:", "https:"],
+  "media-src": ["'self'", "blob:"],
+  "connect-src": ["'self'", "https:", "wss:", "ws:"],
+  "worker-src": ["'self'", "blob:"],
+  "manifest-src": ["'self'"],
+  "base-uri": ["'self'"],
+  "form-action": ["'self'"],
+  "frame-ancestors": ["'none'"],
+  "upgrade-insecure-requests": [],
+};
+
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "X-XSS-Protection": "1; mode=block",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+};
+
+// Generate CSP header string
+function generateCSPHeader(directives = CSP_DIRECTIVES) {
+  return Object.entries(directives)
+    .map(([directive, sources]) => {
+      if (sources.length === 0) {
+        return directive;
+      }
+      return `${directive} ${sources.join(" ")}`;
+    })
+    .join("; ");
+}
+
+// Apply security headers to response
+function applySecurityHeaders(response) {
+  const headers = new Headers(response.headers);
+
+  // Add CSP header
+  headers.set("Content-Security-Policy", generateCSPHeader());
+
+  // Add additional security headers
+  Object.entries(SECURITY_HEADERS).forEach(([header, value]) => {
+    headers.set(header, value);
+  });
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+// Custom plugin to add security headers
+// Resource integrity checker
+class ResourceIntegrityChecker {
+  constructor() {
+    this.trustedHashes = new Map();
+    this.initializeTrustedHashes();
+  }
+
+  initializeTrustedHashes() {
+    // In a real application, these would be generated during build
+    // For now, we'll validate resources dynamically
+    this.trustedDomains = [
+      "https://cdn.jsdelivr.net",
+      "https://unpkg.com",
+      "https://fonts.googleapis.com",
+      "https://fonts.gstatic.com",
+    ];
+  }
+
+  async validateResource(request, response) {
+    try {
+      const url = new URL(request.url);
+
+      // Skip validation for same-origin resources
+      if (url.origin === self.location.origin) {
+        return true;
+      }
+
+      // Check if domain is trusted
+      const isTrustedDomain = this.trustedDomains.some((domain) =>
+        url.href.startsWith(domain)
+      );
+
+      if (!isTrustedDomain) {
+        console.warn("Untrusted resource blocked:", request.url);
+        return false;
+      }
+
+      // Additional integrity checks could be added here
+      // such as hash validation for critical resources
+
+      return true;
+    } catch (error) {
+      console.error("Error validating resource integrity:", error);
+      return false;
+    }
+  }
+}
+
+class SecurityHeadersPlugin {
+  constructor() {
+    this.integrityChecker = new ResourceIntegrityChecker();
+  }
+
+  cacheKeyWillBeUsed({ request }) {
+    return request.url;
+  }
+
+  async cacheWillUpdate({ request, response }) {
+    // Validate resource integrity
+    const isValid = await this.integrityChecker.validateResource(
+      request,
+      response
+    );
+    if (!isValid) {
+      console.warn(
+        "Resource failed integrity check, not caching:",
+        request.url
+      );
+      return null;
+    }
+
+    // Add security headers to HTML responses
+    if (
+      response &&
+      response.headers.get("content-type")?.includes("text/html")
+    ) {
+      return applySecurityHeaders(response);
+    }
+    return response;
+  }
+
+  async cachedResponseWillBeUsed({ request, cachedResponse }) {
+    // Add headers to cached HTML responses
+    if (
+      cachedResponse &&
+      cachedResponse.headers.get("content-type")?.includes("text/html")
+    ) {
+      return applySecurityHeaders(cachedResponse);
+    }
+    return cachedResponse;
+  }
+}
+
 // Clean up outdated caches
 cleanupOutdatedCaches();
 
@@ -24,6 +181,7 @@ registerRoute(
   new CacheFirst({
     cacheName: "static-assets-cache",
     plugins: [
+      new SecurityHeadersPlugin(),
       new CacheableResponsePlugin({
         statuses: [0, 200],
       }),
@@ -43,6 +201,7 @@ registerRoute(
   new NetworkFirst({
     cacheName: "api-cache",
     plugins: [
+      new SecurityHeadersPlugin(),
       new CacheableResponsePlugin({
         statuses: [0, 200],
       }),
@@ -61,6 +220,7 @@ registerRoute(
   new StaleWhileRevalidate({
     cacheName: "pages-cache",
     plugins: [
+      new SecurityHeadersPlugin(),
       new CacheableResponsePlugin({
         statuses: [0, 200],
       }),
@@ -205,12 +365,25 @@ self.addEventListener("fetch", (event) => {
   // Skip non-GET requests
   if (event.request.method !== "GET") return;
 
-  // Handle navigation requests
+  // Handle navigation requests with security headers
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match(OFFLINE_URL);
-      })
+      fetch(event.request)
+        .then((response) => {
+          // Apply security headers to navigation responses
+          if (response.headers.get("content-type")?.includes("text/html")) {
+            return applySecurityHeaders(response);
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(OFFLINE_URL).then((cachedResponse) => {
+            if (cachedResponse) {
+              return applySecurityHeaders(cachedResponse);
+            }
+            return cachedResponse;
+          });
+        })
     );
   }
 });
