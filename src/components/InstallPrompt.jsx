@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Download, X, Smartphone } from "lucide-react";
+import { Download, X, Smartphone, Info } from "lucide-react";
 import { installSuccessTemplate } from "../lib/notification-templates";
 import { useInstallPrompt } from "../hooks/use-install-prompt";
+import browserCompatibility from "../lib/browser-compatibility";
 
 /**
  * InstallPrompt Component
@@ -27,6 +28,10 @@ const InstallPrompt = () => {
 
   const [showPrompt, setShowPrompt] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
+
+  // Get browser-specific install instructions
+  const installInstructions = browserCompatibility.getInstallInstructions();
 
   useEffect(() => {
     // Show install prompt after a delay if installable and not dismissed
@@ -124,11 +129,63 @@ const InstallPrompt = () => {
 
   // Render different UI based on browser support
   const renderInstallContent = () => {
-    if (
-      isInstallable ||
-      browserInfo.type === "chrome" ||
-      browserInfo.type === "edge"
-    ) {
+    if (showInstructions || !installInstructions.supported) {
+      // Show detailed browser-specific instructions
+      return (
+        <>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-blue-100 rounded-full">
+              <Info className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">
+                Install QR Guardian
+              </h3>
+              <p className="text-sm text-gray-600">
+                {installInstructions.browser} on {installInstructions.platform}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-sm text-gray-700 mb-3">
+            <div className="space-y-1">
+              {installInstructions.instructions.map((instruction, index) => (
+                <p key={index}>
+                  {index + 1}. {instruction}
+                </p>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            {installInstructions.supported && !showInstructions && (
+              <Button
+                onClick={() => setShowInstructions(false)}
+                variant="outline"
+                size="sm"
+                className="flex-1"
+              >
+                Try Auto Install
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDismiss}
+              className={
+                installInstructions.supported && !showInstructions
+                  ? ""
+                  : "flex-1"
+              }
+            >
+              Got it
+            </Button>
+          </div>
+        </>
+      );
+    }
+
+    if (isInstallable || installInstructions.supported) {
       // Standard install prompt for supported browsers
       return (
         <>
@@ -155,55 +212,47 @@ const InstallPrompt = () => {
             >
               {isInstalling ? "Installing..." : "Install App"}
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowInstructions(true)}
+              className="px-2"
+            >
+              <Info className="w-4 h-4" />
+            </Button>
             <Button variant="outline" size="sm" onClick={handleDismiss}>
               <X className="w-4 h-4" />
             </Button>
           </div>
         </>
       );
-    } else {
-      // Manual instructions for Safari and other browsers
-      return (
-        <>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-blue-100 rounded-full">
-              <Smartphone className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900">
-                Install QR Guardian
-              </h3>
-              <p className="text-sm text-gray-600">
-                Add to your home screen for quick access
-              </p>
-            </div>
-          </div>
-
-          <div className="text-sm text-gray-700 mb-3">
-            {browserInfo.type === "safari" ? (
-              <div className="space-y-1">
-                <p>
-                  1. Tap the Share button <span className="font-mono">⎋</span>
-                </p>
-                <p>2. Select "Add to Home Screen"</p>
-                <p>3. Tap "Add" to install</p>
-              </div>
-            ) : (
-              <p>Use your browser's menu to add this app to your home screen</p>
-            )}
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDismiss}
-            className="w-full"
-          >
-            Got it
-          </Button>
-        </>
-      );
     }
+
+    // Fallback for unsupported browsers
+    return (
+      <>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="p-2 bg-gray-100 rounded-full">
+            <Smartphone className="w-5 h-5 text-gray-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900">QR Guardian</h3>
+            <p className="text-sm text-gray-600">
+              Bookmark this page for quick access
+            </p>
+          </div>
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDismiss}
+          className="w-full"
+        >
+          Got it
+        </Button>
+      </>
+    );
   };
 
   return (

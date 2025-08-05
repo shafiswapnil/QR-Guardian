@@ -1,0 +1,121 @@
+{
+  "timestamp": "2025-08-05T20:10:01.980Z",
+  "duration": 0.01,
+  "results": {
+    "chrome": {
+      "manifest": {
+        "compatible": true,
+        "issues": []
+      },
+      "serviceWorker": {
+        "compatible": true
+      },
+      "installPrompt": {
+        "compatible": true,
+        "notes": []
+      },
+      "offline": {
+        "compatible": true,
+        "features": [
+          "navigator.onLine",
+          "online",
+          "offline",
+          "IndexedDB"
+        ],
+        "notes": []
+      }
+    },
+    "safari": {
+      "manifest": {
+        "compatible": true,
+        "issues": [],
+        "notes": [
+          "Safari relies on apple-touch-icon meta tags",
+          "Manifest support is limited in Safari"
+        ]
+      },
+      "serviceWorker": {
+        "compatible": true,
+        "notes": [
+          "Limited service worker support in older Safari versions"
+        ]
+      },
+      "installPrompt": {
+        "compatible": false,
+        "notes": [
+          "Limited install prompt support"
+        ]
+      },
+      "offline": {
+        "compatible": true,
+        "features": [
+          "navigator.onLine",
+          "online",
+          "offline",
+          "IndexedDB"
+        ],
+        "notes": [
+          "Limited IndexedDB support in private mode"
+        ]
+      }
+    },
+    "edge": {
+      "manifest": {
+        "compatible": true,
+        "issues": []
+      },
+      "serviceWorker": {
+        "compatible": true
+      },
+      "installPrompt": {
+        "compatible": true,
+        "notes": []
+      },
+      "offline": {
+        "compatible": true,
+        "features": [
+          "navigator.onLine",
+          "online",
+          "offline",
+          "IndexedDB"
+        ],
+        "notes": []
+      }
+    },
+    "firefox": {
+      "manifest": {
+        "compatible": true,
+        "issues": []
+      },
+      "serviceWorker": {
+        "compatible": true
+      },
+      "installPrompt": {
+        "compatible": true,
+        "notes": []
+      },
+      "offline": {
+        "compatible": true,
+        "features": [
+          "navigator.onLine",
+          "online",
+          "offline",
+          "IndexedDB"
+        ],
+        "notes": []
+      }
+    },
+    "mobile": {
+      "responsive": {
+        "score": 0,
+        "hasViewportMeta": true,
+        "features": [],
+        "compatible": false
+      }
+    }
+  },
+  "summary": {
+    "totalTests": 17,
+    "passedTests": 15
+  }
+}
