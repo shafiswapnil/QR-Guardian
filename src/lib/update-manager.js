@@ -119,14 +119,16 @@ class UpdateManager {
    * Handle service worker errors
    */
   _handleServiceWorkerError(error) {
-    console.error("Service worker error in UpdateManager:", error);
+    const errorMessage =
+      error?.message || error?.toString() || "Unknown service worker error";
+    console.error("Service worker error in UpdateManager:", errorMessage);
 
     // If update fails, attempt rollback
-    if (this.isUpdating && error.type === "installation-error") {
+    if (this.isUpdating && error?.type === "installation-error") {
       this._attemptRollback(error);
     }
 
-    this.emit("error", { type: "service-worker-error", error });
+    this.emit("error", { type: "service-worker-error", error: errorMessage });
   }
 
   /**
