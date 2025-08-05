@@ -85,13 +85,24 @@ const InstallPrompt = () => {
       if (result.outcome === "accepted") {
         console.log("User accepted the install prompt");
         await showInstallSuccessNotification();
+        trackInstallEvent("install_success", {
+          browser: browserInfo.type,
+          method: "beforeinstallprompt",
+        });
       } else if (result.outcome === "dismissed") {
         console.log("User dismissed the install prompt");
+        trackInstallEvent("install_dismissed", {
+          browser: browserInfo.type,
+        });
       }
 
       setShowPrompt(false);
     } catch (error) {
       console.error("Error during installation:", error);
+      trackInstallEvent("install_error", {
+        browser: browserInfo.type,
+        error: error.message,
+      });
     } finally {
       setIsInstalling(false);
     }
@@ -100,7 +111,7 @@ const InstallPrompt = () => {
   // Handle dismiss
   const handleDismiss = () => {
     setShowPrompt(false);
-    trackInstallEvent("dismissed", { browser: browserInfo.type });
+    trackInstallEvent("prompt_dismissed", { browser: browserInfo.type });
 
     // Don't show again for this session
     sessionStorage.setItem("install_prompt_dismissed", "true");

@@ -151,10 +151,11 @@ export const useInstallPrompt = () => {
       const analytics = {
         totalEvents: events.length,
         promptsShown: events.filter((e) => e.action === "prompt_shown").length,
-        installs: events.filter((e) => e.action === "success").length,
-        dismissals: events.filter((e) => e.action === "dismissed").length,
+        installs: events.filter((e) => e.action === "install_success").length,
+        dismissals: events.filter((e) => e.action === "prompt_dismissed")
+          .length,
         errors: events.filter(
-          (e) => e.action === "error" || e.action === "prompt_error"
+          (e) => e.action === "install_error" || e.action === "prompt_error"
         ).length,
         lastEvent: events[events.length - 1] || null,
         events: events,
@@ -208,7 +209,7 @@ export const useInstallPrompt = () => {
       setDeferredPrompt(null);
 
       // Track successful installation
-      trackInstallEvent("success", {
+      trackInstallEvent("install_success", {
         method: "beforeinstallprompt",
         browser: browser.type,
       });
