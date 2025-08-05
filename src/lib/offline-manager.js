@@ -188,7 +188,6 @@ class OfflineManager {
       const scanItem = {
         ...scanData,
         timestamp: scanData.timestamp || new Date().toISOString(),
-        synced: false,
         offline: !this.isOnline,
       };
 

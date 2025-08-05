@@ -163,16 +163,6 @@ const ScanHistory = () => {
                 key={item.id || index}
                 className="p-3 sm:p-4 border border-gray-200 rounded-lg bg-gray-50 relative"
               >
-                {/* Offline indicator for items */}
-                {item.offline && (
-                  <div className="absolute top-2 right-2">
-                    <WifiOff
-                      className="w-3 h-3 text-orange-500"
-                      title="Scanned offline"
-                    />
-                  </div>
-                )}
-
                 <div className="flex items-center justify-between text-xs sm:text-sm mb-2">
                   <div className="flex items-center gap-1 text-gray-600">
                     <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -199,11 +189,11 @@ const ScanHistory = () => {
                   <p className="text-xs sm:text-sm break-all">{item.content}</p>
                 </div>
 
-                {/* Sync status indicator */}
-                {item.synced === false && (
-                  <div className="mt-2 text-xs text-orange-600 flex items-center gap-1">
-                    <RefreshCw className="w-3 h-3" />
-                    <span>Pending sync</span>
+                {/* Show offline indicator if scanned while offline */}
+                {item.offline && (
+                  <div className="mt-2 text-xs text-blue-600 flex items-center gap-1">
+                    <Database className="w-3 h-3" />
+                    <span>Scanned offline</span>
                   </div>
                 )}
               </div>

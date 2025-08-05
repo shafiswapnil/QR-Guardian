@@ -8,24 +8,14 @@ import ScanHistory from "./components/ScanHistory";
 import OfflineIndicator from "./components/OfflineIndicator";
 import UpdatePrompt from "./components/UpdatePrompt";
 import UpdateBanner from "./components/UpdateBanner";
-import UpdateStatus from "./components/UpdateStatus";
 import InstallPrompt from "./components/InstallPrompt";
-import InstallAnalytics from "./components/InstallAnalytics";
-import {
-  QrCode,
-  Scan,
-  Shield,
-  Share2,
-  History,
-  Settings,
-  TestTube,
-} from "lucide-react";
+import { QrCode, Scan, Shield, Share2, History } from "lucide-react";
 import { useIsMobile } from "./hooks/use-mobile";
 import offlineManager from "./lib/offline-manager";
 import NotificationManager from "./lib/notification-manager";
 import updateManager from "./lib/update-manager";
 import { maliciousQRDetectedTemplate } from "./lib/notification-templates";
-import CrossBrowserTestPage from "./components/CrossBrowserTestPage";
+
 import "./App.css";
 
 function App() {
@@ -209,11 +199,7 @@ function App() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList
             className={`grid w-full mb-6 sm:mb-8 ${
-              isMobile
-                ? "grid-cols-3 gap-1 h-auto p-1"
-                : import.meta.env.DEV
-                ? "grid-cols-7"
-                : "grid-cols-6"
+              isMobile ? "grid-cols-3 gap-1 h-auto p-1" : "grid-cols-5"
             }`}
           >
             <TabsTrigger
@@ -279,30 +265,6 @@ function App() {
               <History className="w-4 h-4" />
               History
             </TabsTrigger>
-            <TabsTrigger
-              value="settings"
-              className={`flex items-center gap-1 sm:gap-2 ${
-                isMobile
-                  ? "min-h-[44px] text-xs sm:text-sm flex-col sm:flex-row p-2"
-                  : ""
-              }`}
-            >
-              <Settings className="w-4 h-4" />
-              Settings
-            </TabsTrigger>
-            {import.meta.env.DEV && (
-              <TabsTrigger
-                value="testing"
-                className={`flex items-center gap-1 sm:gap-2 ${
-                  isMobile
-                    ? "min-h-[44px] text-xs sm:text-sm flex-col sm:flex-row p-2"
-                    : ""
-                }`}
-              >
-                <TestTube className="w-4 h-4" />
-                Testing
-              </TabsTrigger>
-            )}
           </TabsList>
 
           <TabsContent value="scanner" className="space-y-6">
@@ -344,24 +306,6 @@ function App() {
           <TabsContent value="history" className="space-y-6">
             <ScanHistory />
           </TabsContent>
-
-          <TabsContent value="settings" className="space-y-6">
-            <div className="space-y-6">
-              <UpdateStatus />
-              <InstallAnalytics />
-
-              <div className="text-center text-gray-500 py-4">
-                <Settings className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">App settings and update management</p>
-              </div>
-            </div>
-          </TabsContent>
-
-          {import.meta.env.DEV && (
-            <TabsContent value="testing" className="space-y-6">
-              <CrossBrowserTestPage />
-            </TabsContent>
-          )}
         </Tabs>
       </div>
     </div>
