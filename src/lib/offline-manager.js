@@ -14,12 +14,15 @@ class OfflineManager {
     this.dbVersion = 1;
     this.db = null;
     this.syncInProgress = false;
+    this.isInitialized = false;
+    this.initializationPromise = null;
+    this.initializationStarted = false;
 
     // Initialize event listeners
     this._setupEventListeners();
 
-    // Initialize IndexedDB
-    this._initializeDB();
+    // Initialize IndexedDB with promise tracking
+    this.initializationPromise = this._initializeDB();
 
     // Set up background sync event listeners
     this._setupBackgroundSyncListeners();
@@ -80,22 +83,31 @@ class OfflineManager {
    * Initialize IndexedDB for offline storage
    */
   async _initializeDB() {
+    // Handle React StrictMode double execution
+    if (this.initializationStarted) {
+      return this.initializationPromise;
+    }
+    this.initializationStarted = true;
+
     if (!("indexedDB" in window)) {
       console.warn("IndexedDB not supported");
       this.emit("error", {
         type: "indexeddb-unsupported",
         message: "IndexedDB not supported",
       });
+      this.isInitialized = false;
       return false;
     }
 
     try {
       this.db = await this._openDB();
+      this.isInitialized = true;
       console.log("IndexedDB initialized successfully");
       this.emit("db-ready");
       return true;
     } catch (error) {
       console.error("Failed to initialize IndexedDB:", error);
+      this.isInitialized = false;
       this.emit("error", { type: "db-init-failed", error });
       return false;
     }
@@ -149,6 +161,23 @@ class OfflineManager {
   }
 
   /**
+   * Wait for database initialization to complete
+   */
+  async waitForInitialization() {
+    if (this.isInitialized) {
+      return true;
+    }
+
+    try {
+      const result = await this.initializationPromise;
+      return result;
+    } catch (error) {
+      console.error("Database initialization failed:", error);
+      return false;
+    }
+  }
+
+  /**
    * Check current network status
    */
   _checkNetworkStatus() {
@@ -176,9 +205,12 @@ class OfflineManager {
    * Store scan history item offline
    */
   async storeScanHistory(scanData) {
-    if (!this.db) {
-      console.warn("Database not initialized");
-      return false;
+    // Wait for database initialization
+    const dbReady = await this.waitForInitialization();
+
+    if (!dbReady || !this.db) {
+      console.warn("Database not available, using localStorage fallback");
+      return this._storeScanHistoryFallback(scanData);
     }
 
     try {
@@ -199,7 +231,9 @@ class OfflineManager {
     } catch (error) {
       console.error("Failed to store scan history:", error);
       this.emit("error", { type: "store-scan-failed", error });
-      return false;
+
+      // Fallback to localStorage
+      return this._storeScanHistoryFallback(scanData);
     }
   }
 
@@ -207,9 +241,12 @@ class OfflineManager {
    * Get all scan history from IndexedDB
    */
   async getScanHistory() {
-    if (!this.db) {
-      console.warn("Database not initialized");
-      return [];
+    // Wait for database initialization
+    const dbReady = await this.waitForInitialization();
+
+    if (!dbReady || !this.db) {
+      console.warn("Database not available, using localStorage fallback");
+      return this._getScanHistoryFallback();
     }
 
     try {
@@ -237,7 +274,8 @@ class OfflineManager {
       });
     } catch (error) {
       console.error("Failed to get scan history:", error);
-      return [];
+      // Fallback to localStorage
+      return this._getScanHistoryFallback();
     }
   }
 
@@ -245,9 +283,12 @@ class OfflineManager {
    * Store user preferences offline
    */
   async storeUserPreference(key, value) {
-    if (!this.db) {
-      console.warn("Database not initialized");
-      return false;
+    // Wait for database initialization
+    const dbReady = await this.waitForInitialization();
+
+    if (!dbReady || !this.db) {
+      console.warn("Database not available, using localStorage fallback");
+      return this._storeUserPreferenceFallback(key, value);
     }
 
     try {
@@ -263,7 +304,8 @@ class OfflineManager {
       return true;
     } catch (error) {
       console.error("Failed to store user preference:", error);
-      return false;
+      // Fallback to localStorage
+      return this._storeUserPreferenceFallback(key, value);
     }
   }
 
@@ -271,9 +313,12 @@ class OfflineManager {
    * Get user preference from IndexedDB
    */
   async getUserPreference(key) {
-    if (!this.db) {
-      console.warn("Database not initialized");
-      return null;
+    // Wait for database initialization
+    const dbReady = await this.waitForInitialization();
+
+    if (!dbReady || !this.db) {
+      console.warn("Database not available, using localStorage fallback");
+      return this._getUserPreferenceFallback(key);
     }
 
     try {
@@ -284,7 +329,8 @@ class OfflineManager {
       return result ? result.value : null;
     } catch (error) {
       console.error("Failed to get user preference:", error);
-      return null;
+      // Fallback to localStorage
+      return this._getUserPreferenceFallback(key);
     }
   }
 
@@ -344,7 +390,10 @@ class OfflineManager {
    * Get queued requests from IndexedDB
    */
   async _getQueuedRequests() {
-    if (!this.db) return [];
+    // Wait for database initialization
+    const dbReady = await this.waitForInitialization();
+
+    if (!dbReady || !this.db) return [];
 
     try {
       const transaction = this.db.transaction(["requestQueue"], "readonly");
@@ -392,7 +441,10 @@ class OfflineManager {
    * Remove request from queue
    */
   async _removeFromQueue(requestId) {
-    if (!this.db) return;
+    // Wait for database initialization
+    const dbReady = await this.waitForInitialization();
+
+    if (!dbReady || !this.db) return;
 
     try {
       const transaction = this.db.transaction(["requestQueue"], "readwrite");
@@ -408,7 +460,10 @@ class OfflineManager {
    * Increment retry count for failed request
    */
   async _incrementRetryCount(requestId) {
-    if (!this.db) return;
+    // Wait for database initialization
+    const dbReady = await this.waitForInitialization();
+
+    if (!dbReady || !this.db) return;
 
     try {
       const transaction = this.db.transaction(["requestQueue"], "readwrite");
@@ -428,9 +483,12 @@ class OfflineManager {
    * Clear all offline data
    */
   async clearOfflineData() {
-    if (!this.db) {
-      console.warn("Database not initialized");
-      return false;
+    // Wait for database initialization
+    const dbReady = await this.waitForInitialization();
+
+    if (!dbReady || !this.db) {
+      console.warn("Database not available, clearing localStorage fallback");
+      return this._clearOfflineDataFallback();
     }
 
     try {
@@ -447,12 +505,16 @@ class OfflineManager {
         this._promisifyRequest(transaction.objectStore("requestQueue").clear()),
       ]);
 
+      // Also clear localStorage fallback data
+      this._clearOfflineDataFallback();
+
       console.log("All offline data cleared");
       this.emit("data-cleared");
       return true;
     } catch (error) {
       console.error("Failed to clear offline data:", error);
-      return false;
+      // Fallback to clearing localStorage
+      return this._clearOfflineDataFallback();
     }
   }
 
@@ -460,8 +522,18 @@ class OfflineManager {
    * Get offline storage usage statistics
    */
   async getStorageStats() {
-    if (!this.db) {
-      return { scanHistory: 0, userPreferences: 0, requestQueue: 0 };
+    // Wait for database initialization
+    const dbReady = await this.waitForInitialization();
+
+    if (!dbReady || !this.db) {
+      // Fallback to localStorage stats
+      const scanHistory = this._getScanHistoryFallback();
+      return {
+        scanHistory: scanHistory.length,
+        userPreferences: 0,
+        requestQueue: 0,
+        fallback: true,
+      };
     }
 
     try {
@@ -489,11 +561,14 @@ class OfflineManager {
       };
     } catch (error) {
       console.error("Failed to get storage stats:", error);
+      // Fallback to localStorage stats
+      const scanHistory = this._getScanHistoryFallback();
       return {
-        scanHistory: 0,
+        scanHistory: scanHistory.length,
         userPreferences: 0,
         requestQueue: 0,
         backgroundSync: {},
+        fallback: true,
       };
     }
   }
@@ -547,6 +622,115 @@ class OfflineManager {
       console.error("Failed to retry failed sync requests:", error);
       this.emit("error", { type: "retry-failed-sync-requests-failed", error });
       return 0;
+    }
+  }
+
+  /**
+   * Store scan history using localStorage fallback
+   */
+  _storeScanHistoryFallback(scanData) {
+    try {
+      const scanItem = {
+        ...scanData,
+        timestamp: scanData.timestamp || new Date().toISOString(),
+        offline: !this.isOnline,
+      };
+
+      const existingHistory = this._getScanHistoryFallback();
+      const updatedHistory = [scanItem, ...existingHistory];
+
+      localStorage.setItem("qrScanHistory", JSON.stringify(updatedHistory));
+      console.log("Scan history stored in localStorage fallback:", scanItem);
+
+      this.emit("scan-stored", scanItem);
+      return true;
+    } catch (error) {
+      console.error("Failed to store scan history in localStorage:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Get scan history using localStorage fallback
+   */
+  _getScanHistoryFallback() {
+    try {
+      const storedHistory = localStorage.getItem("qrScanHistory");
+      return storedHistory ? JSON.parse(storedHistory) : [];
+    } catch (error) {
+      console.error("Failed to get scan history from localStorage:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Store user preference using localStorage fallback
+   */
+  _storeUserPreferenceFallback(key, value) {
+    try {
+      const prefKey = `qr_pref_${key}`;
+      localStorage.setItem(
+        prefKey,
+        JSON.stringify({ value, timestamp: Date.now() })
+      );
+      console.log(
+        "User preference stored in localStorage fallback:",
+        key,
+        value
+      );
+
+      this.emit("preference-stored", { key, value });
+      return true;
+    } catch (error) {
+      console.error("Failed to store user preference in localStorage:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Get user preference using localStorage fallback
+   */
+  _getUserPreferenceFallback(key) {
+    try {
+      const prefKey = `qr_pref_${key}`;
+      const storedPref = localStorage.getItem(prefKey);
+
+      if (storedPref) {
+        const parsed = JSON.parse(storedPref);
+        return parsed.value;
+      }
+      return null;
+    } catch (error) {
+      console.error("Failed to get user preference from localStorage:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Clear offline data using localStorage fallback
+   */
+  _clearOfflineDataFallback() {
+    try {
+      // Clear scan history
+      localStorage.removeItem("qrScanHistory");
+
+      // Clear user preferences (find all keys starting with qr_pref_)
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("qr_pref_")) {
+          keysToRemove.push(key);
+        }
+      }
+
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+
+      console.log("localStorage fallback data cleared");
+      this.emit("data-cleared");
+      return true;
+    } catch (error) {
+      console.error("Failed to clear localStorage fallback data:", error);
+      return false;
     }
   }
 

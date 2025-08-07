@@ -52,9 +52,14 @@ describe("OfflineManager", () => {
   it("should handle storage operations gracefully when DB is not available", async () => {
     const { default: offlineManager } = await import("../offline-manager.js");
 
-    // Force DB to null to test error handling
+    // Force DB to null and initialization to fail to test localStorage fallback
     const originalDB = offlineManager.db;
+    const originalIsInitialized = offlineManager.isInitialized;
+    const originalInitPromise = offlineManager.initializationPromise;
+
     offlineManager.db = null;
+    offlineManager.isInitialized = false;
+    offlineManager.initializationPromise = Promise.resolve(false);
 
     const result = await offlineManager.storeScanHistory({
       content: "test",
@@ -62,30 +67,42 @@ describe("OfflineManager", () => {
       isSafe: true,
     });
 
-    expect(result).toBe(false);
+    // Should succeed with localStorage fallback
+    expect(result).toBe(true);
 
-    // Restore original DB
+    // Restore original state
     offlineManager.db = originalDB;
+    offlineManager.isInitialized = originalIsInitialized;
+    offlineManager.initializationPromise = originalInitPromise;
   });
 
   it("should handle user preferences gracefully when DB is not available", async () => {
     const { default: offlineManager } = await import("../offline-manager.js");
 
-    // Force DB to null to test error handling
+    // Force DB to null and initialization to fail to test localStorage fallback
     const originalDB = offlineManager.db;
+    const originalIsInitialized = offlineManager.isInitialized;
+    const originalInitPromise = offlineManager.initializationPromise;
+
     offlineManager.db = null;
+    offlineManager.isInitialized = false;
+    offlineManager.initializationPromise = Promise.resolve(false);
 
     const storeResult = await offlineManager.storeUserPreference(
       "test",
       "value"
     );
-    expect(storeResult).toBe(false);
+    // Should succeed with localStorage fallback
+    expect(storeResult).toBe(true);
 
     const getResult = await offlineManager.getUserPreference("test");
-    expect(getResult).toBe(null);
+    // Should return the stored value from localStorage
+    expect(getResult).toBe("value");
 
-    // Restore original DB
+    // Restore original state
     offlineManager.db = originalDB;
+    offlineManager.isInitialized = originalIsInitialized;
+    offlineManager.initializationPromise = originalInitPromise;
   });
 
   it("should have cleanup method", async () => {
