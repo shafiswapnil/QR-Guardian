@@ -5,23 +5,90 @@ import QRGenerator from "./components/QRGenerator";
 import SafetyChecker from "./components/SafetyChecker";
 import NearbySharing from "./components/NearbySharing";
 import ScanHistory from "./components/ScanHistory";
+import OfflineIndicator from "./components/OfflineIndicator";
+import UpdatePrompt from "./components/UpdatePrompt";
+import UpdateBanner from "./components/UpdateBanner";
+import InstallPrompt from "./components/InstallPrompt";
 import { QrCode, Scan, Shield, Share2, History } from "lucide-react";
 import { useIsMobile } from "./hooks/use-mobile";
+import offlineManager from "./lib/offline-manager";
+import NotificationManager from "./lib/notification-manager";
+import updateManager from "./lib/update-manager";
+import { maliciousQRDetectedTemplate } from "./lib/notification-templates";
+
 import "./App.css";
 
 function App() {
   const [scannedUrl, setScannedUrl] = useState("");
   const [activeTab, setActiveTab] = useState("scanner");
   const [contentToShare, setContentToShare] = useState("");
-  const [scanHistory, setScanHistory] = useState(() => {
-    const storedHistory = localStorage.getItem("qrScanHistory");
-    return storedHistory ? JSON.parse(storedHistory) : [];
-  });
+  const [scanHistory, setScanHistory] = useState([]);
+  const [isOffline, setIsOffline] = useState(!offlineManager.getOnlineStatus());
+  const [notificationManager] = useState(() => new NotificationManager());
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    localStorage.setItem("qrScanHistory", JSON.stringify(scanHistory));
-  }, [scanHistory]);
+    // Set up offline manager listeners
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    offlineManager.on("online", handleOnline);
+    offlineManager.on("offline", handleOffline);
+
+    // Initialize notification manager
+    const initializeNotifications = async () => {
+      try {
+        // Request notification permission on app load
+        const hasPermission = await notificationManager.requestPermission();
+        if (hasPermission) {
+          console.log("Notification permission granted");
+        }
+
+        // Set up service worker registration for notifications
+        if ("serviceWorker" in navigator) {
+          const registration = await navigator.serviceWorker.ready;
+          notificationManager.setServiceWorkerRegistration(registration);
+        }
+      } catch (error) {
+        console.error("Failed to initialize notifications:", error);
+      }
+    };
+
+    // Initialize update manager
+    const initializeUpdateManager = async () => {
+      try {
+        await updateManager.initialize();
+        console.log("UpdateManager initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize UpdateManager:", error);
+      }
+    };
+
+    // Load initial scan history from IndexedDB
+    const loadInitialHistory = async () => {
+      try {
+        const history = await offlineManager.getScanHistory();
+        setScanHistory(history);
+      } catch (error) {
+        console.error("Failed to load initial scan history:", error);
+        // Fallback to localStorage
+        const storedHistory = localStorage.getItem("qrScanHistory");
+        if (storedHistory) {
+          setScanHistory(JSON.parse(storedHistory));
+        }
+      }
+    };
+
+    initializeNotifications();
+    initializeUpdateManager();
+    loadInitialHistory();
+
+    return () => {
+      offlineManager.off("online", handleOnline);
+      offlineManager.off("offline", handleOffline);
+      updateManager.destroy();
+    };
+  }, [notificationManager]);
 
   const handleScanSuccess = (decodedText) => {
     console.log("QR Code scanned:", decodedText);
@@ -59,12 +126,42 @@ function App() {
 
     const isSafe = checkInitialSafety(decodedText);
 
+    // Show security notification for malicious QR codes
+    // Requirement 4.2: When security threats are detected THEN the user SHALL receive appropriate alerts
+    if (!isSafe) {
+      const threat = {
+        type: "malicious-qr",
+        description: "Potentially harmful QR code detected",
+        content: decodedText,
+        reason: "Contains suspicious patterns or invalid URL",
+        severity: "high",
+      };
+
+      notificationManager.showSecurityAlert(threat).catch((error) => {
+        console.error("Failed to show security notification:", error);
+      });
+    }
+
     const newScan = {
       content: decodedText,
       timestamp: new Date().toISOString(),
       isSafe: isSafe,
     };
-    setScanHistory((prevHistory) => [newScan, ...prevHistory]);
+
+    // Store in IndexedDB for offline access
+    offlineManager
+      .storeScanHistory(newScan)
+      .then(() => {
+        // Update local state
+        setScanHistory((prevHistory) => [newScan, ...prevHistory]);
+      })
+      .catch((error) => {
+        console.error("Failed to store scan history offline:", error);
+        // Fallback to localStorage and local state
+        const updatedHistory = [newScan, ...scanHistory];
+        setScanHistory(updatedHistory);
+        localStorage.setItem("qrScanHistory", JSON.stringify(updatedHistory));
+      });
   };
 
   const handleScanError = (error) => {
@@ -78,6 +175,16 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 px-4 py-6 sm:p-6 md:p-8">
+      {/* Offline status indicator */}
+      <OfflineIndicator />
+
+      {/* Update management components */}
+      <UpdatePrompt />
+      <UpdateBanner />
+
+      {/* PWA install prompt */}
+      <InstallPrompt />
+
       <div className="max-w-full sm:max-w-md md:max-w-2xl lg:max-w-4xl mx-auto">
         <header className="text-center mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2">
@@ -92,7 +199,7 @@ function App() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList
             className={`grid w-full mb-6 sm:mb-8 ${
-              isMobile ? "grid-cols-2 gap-1 h-auto p-1" : "grid-cols-5"
+              isMobile ? "grid-cols-3 gap-1 h-auto p-1" : "grid-cols-5"
             }`}
           >
             <TabsTrigger
