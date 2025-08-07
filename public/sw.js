@@ -283,12 +283,26 @@ self.addEventListener("install", (event) => {
     (async () => {
       try {
         const cache = await caches.open("offline-cache");
-        await cache.addAll([
-          OFFLINE_URL,
-          "/",
-          "/static/css/main.css",
-          "/static/js/main.js",
-        ]);
+
+        // Cache essential resources that we know exist
+        const resourcesToCache = [OFFLINE_URL, "/"];
+
+        // Try to cache each resource individually to avoid failing the entire installation
+        const cachePromises = resourcesToCache.map(async (url) => {
+          try {
+            const response = await fetch(url);
+            if (response.ok) {
+              await cache.put(url, response);
+              console.log(`Cached: ${url}`);
+            } else {
+              console.warn(`Failed to fetch ${url}: ${response.status}`);
+            }
+          } catch (error) {
+            console.warn(`Error caching ${url}:`, error.message);
+          }
+        });
+
+        await Promise.allSettled(cachePromises);
 
         // Notify clients that offline resources are ready
         broadcastMessage({
