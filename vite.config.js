@@ -105,7 +105,7 @@ export default defineConfig({
         ],
       },
       devOptions: {
-        enabled: true,
+        enabled: false, // Disable VitePWA dev service worker to avoid conflicts
         type: "module",
       },
     }),
